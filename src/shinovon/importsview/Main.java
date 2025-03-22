@@ -277,7 +277,7 @@ public class Main extends SignatureVisitor implements Runnable {
 			}
 		});
 		
-		fieldsCheck = new JCheckBox("Methods");
+		fieldsCheck = new JCheckBox("Fields");
 		panel_2.add(fieldsCheck);
 		fieldsCheck.setSelected(fields);
 		fieldsCheck.addActionListener(new ActionListener() {
