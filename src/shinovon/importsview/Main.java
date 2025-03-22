@@ -36,6 +36,7 @@ import java.awt.event.ActionEvent;
 import javax.swing.JCheckBox;
 import java.awt.GridLayout;
 import javax.swing.JLabel;
+import java.awt.FlowLayout;
 
 public class Main extends SignatureVisitor implements Runnable {
 
@@ -50,12 +51,17 @@ public class Main extends SignatureVisitor implements Runnable {
 	private StringBuilder sb = new StringBuilder();
 
 	private boolean running;
+	
 	private static boolean externalOnly;
+	private static boolean global;
+	private static boolean methods;
+	private static boolean fields;
 
 	Object target;
 	private JCheckBox externalCheck;
-	private JPanel panel_1;
-	private JLabel label;
+	private JCheckBox globalCheck;
+	private JCheckBox methodsCheck;
+	private JCheckBox fieldsCheck;
 
 	public static void main(String[] args) {
 		if (args.length > 0) {
@@ -97,12 +103,31 @@ public class Main extends SignatureVisitor implements Runnable {
 				process(s);
 			}
 		}
+		if (global) {
+			Collections.sort(found);
+			for (String s: found) {
+				log(s, false);
+			}
+			log("", true);
+		}
 		running = false;
 	}
 	
 	private void process(String t) {
 		if ("-external".equalsIgnoreCase(t)) {
 			externalOnly = true;
+			return;
+		}
+		if ("-global".equalsIgnoreCase(t)) {
+			global = true;
+			return;
+		}
+		if ("-methods".equalsIgnoreCase(t)) {
+			methods = true;
+			return;
+		}
+		if ("-fields".equalsIgnoreCase(t)) {
+			fields = true;
 			return;
 		}
 		File f = new File(t);
@@ -126,10 +151,10 @@ public class Main extends SignatureVisitor implements Runnable {
 		String n = f.getName().toLowerCase();
 		if (!n.endsWith(".zip") && !n.endsWith(".jar")) return;
 
-		log("File: " + f, true);
+		if (!global) log("File: " + f, true);
 		
 		try {
-			found = new ArrayList<String>();
+			if (!global) found = new ArrayList<String>();
 			jarClasses = new ArrayList<String>();
 			
 			try (ZipFile zipFile = new ZipFile(f)) {
@@ -149,21 +174,31 @@ public class Main extends SignatureVisitor implements Runnable {
 					if (!s.endsWith(".class")) continue;
 					
 					s = s.substring(0, s.length() - 6);
+					if (s.length() == 0) {
+						log("Invalid class name: " + s, true);
+						continue;
+					}
 					ClassReader classReader = new ClassReader(zipFile.getInputStream(entry));
 					ClassWriter classWriter = new ClassWriter(0);
 					classReader.accept(new ClassAdapter(classWriter, s), ClassReader.SKIP_DEBUG);
 				}
 			}
 			
-			Collections.sort(found);
-			for (String s: found) {
-				log(s, false);
+			if (!global) {
+				Collections.sort(found);
+				for (String s: found) {
+					log(s, false);
+				}
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			log("Error: " + e.toString(), false);
+			if (global) {
+				log("Error: " + e.toString() + ", File: " + f, true);
+			} else {
+				log("Error: " + e.toString(), false);
+			}
 		}
-		log("", true);
+		if (!global) log("", true);
 	}
 	
 	void log(String s, boolean b) {
@@ -177,16 +212,17 @@ public class Main extends SignatureVisitor implements Runnable {
 		if (textArea == null) return;
 		sb.setLength(0);
 		textArea.setText("");
+		if (global) found = new ArrayList<String>();
 	}
 
 	void initializeUI() {
 		frame = new JFrame();
-		frame.setTitle("Imports view");
+		frame.setTitle("Imports view v2");
 		frame.setBounds(100, 100, 350, 536);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.getContentPane().setLayout(new GridLayout(0, 1, 0, 0));
 		
-		panel_1 = new JPanel();
+		JPanel panel_1 = new JPanel();
 		frame.getContentPane().add(panel_1);
 		panel_1.setLayout(new BorderLayout(5, 5));
 		
@@ -208,16 +244,49 @@ public class Main extends SignatureVisitor implements Runnable {
 		panel.add(textField, BorderLayout.CENTER);
 		textField.setColumns(10);
 		
+		JPanel panel_2 = new JPanel();
+		FlowLayout flowLayout = (FlowLayout) panel_2.getLayout();
+		flowLayout.setAlignment(FlowLayout.LEFT);
+		panel.add(panel_2, BorderLayout.SOUTH);
+		
 		externalCheck = new JCheckBox("External only");
+		panel_2.add(externalCheck);
 		externalCheck.setSelected(externalOnly = true);
+		
 		externalCheck.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				externalOnly = externalCheck.isSelected();
 			}
 		});
-		panel.add(externalCheck, BorderLayout.SOUTH);
 		
-		label = new JLabel("Jar or folder: ");
+		globalCheck = new JCheckBox("Global");
+		panel_2.add(globalCheck);
+		globalCheck.setSelected(global);
+		globalCheck.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				global = globalCheck.isSelected();
+			}
+		});
+		
+		methodsCheck = new JCheckBox("Methods");
+		panel_2.add(methodsCheck);
+		methodsCheck.setSelected(methods);
+		methodsCheck.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				methods = methodsCheck.isSelected();
+			}
+		});
+		
+		fieldsCheck = new JCheckBox("Methods");
+		panel_2.add(fieldsCheck);
+		fieldsCheck.setSelected(fields);
+		fieldsCheck.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				fields = fieldsCheck.isSelected();
+			}
+		});
+		
+		JLabel label = new JLabel("Jar or folder: ");
 		panel.add(label, BorderLayout.WEST);
 		
 		JScrollPane scrollPane = new JScrollPane();
@@ -278,7 +347,7 @@ public class Main extends SignatureVisitor implements Runnable {
 	}
 
 	public static void addName(String s) {
-		if (found.contains(s)) return;
+		if (found.contains(s) || s == null) return;
 		if (s.startsWith("[")) {
 			addDesc(s);
 			return;
@@ -316,6 +385,52 @@ public class Main extends SignatureVisitor implements Runnable {
 		}
 		if (found.contains(s)) return;
 		if (externalOnly && jarClasses.contains(s)) return;
+		found.add(s);
+	}
+
+	public static void addMethod(int op, String cls, String name, String sign) {
+		if (externalOnly && jarClasses.contains(cls)) return;
+		addName(cls);
+		addDesc(sign);
+		
+		if (!methods) return;
+		String s;
+		if (op == Opcodes.INVOKEVIRTUAL) {
+			s = "virtual";
+		} else if (op == Opcodes.INVOKESPECIAL) {
+			s = "special";
+		} else if (op == Opcodes.INVOKESTATIC) {
+			s = "static";
+		} else if (op == Opcodes.INVOKEINTERFACE) {
+			s = "interface";
+		} else {
+			s = "";
+		}
+		s = cls+" "+name+sign + " " + s;
+		if (found.contains(s)) return;
+		found.add(s);
+	}
+
+	public static void addField(int op, String cls, String name, String sign) {
+		if (externalOnly && jarClasses.contains(cls)) return;
+		addName(cls);
+		addDesc(sign);
+		
+		if (!fields) return;
+		String s;
+		if (op == Opcodes.GETSTATIC) {
+			s = "getstatic";
+		} else if (op == Opcodes.PUTSTATIC) {
+			s = "putstatic";
+		} else if (op == Opcodes.GETFIELD) {
+			s = "getfield";
+		} else if (op == Opcodes.PUTFIELD) {
+			s = "putfield";
+		} else {
+			s = "";
+		}
+		s = cls+" "+sign + " " + name + " " + s;
+		if (found.contains(s)) return;
 		found.add(s);
 	}
 

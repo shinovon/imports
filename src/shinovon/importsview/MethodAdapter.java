@@ -9,15 +9,14 @@ public class MethodAdapter extends MethodVisitor implements Opcodes {
 		super(Opcodes.ASM4, methodVisitor);
 	}
 	
-	public void visitMethodInsn(int acc, String cls, String name, String sign) {
-		Main.addName(cls);
-		Main.addDesc(sign);
-		super.visitMethodInsn(acc, cls, name, sign);
+	public void visitMethodInsn(int op, String cls, String name, String sign) {
+		Main.addMethod(op, cls, name, sign);
+		super.visitMethodInsn(op, cls, name, sign);
 	}
 	
-	public void visitFieldInsn(int n, String s, String s2, String s3) {
-		Main.addDesc(s3);
-		super.visitFieldInsn(n, s, s2, s3);
+	public void visitFieldInsn(int op, String owner, String name, String desc) {
+		Main.addField(op, owner, name, desc);
+		super.visitFieldInsn(op, owner, name, desc);
 	}
 	
 	public final void visitTypeInsn(final int n, final String s) {
