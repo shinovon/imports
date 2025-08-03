@@ -44,9 +44,13 @@ public class Main extends SignatureVisitor implements Runnable {
 	
 	private JFrame frame;
 	private JTextField textField;
+	private JTextField refField;
 	private static JTextArea textArea;
 	private static List<String> found;
 	private static List<String> jarClasses;
+	
+	private static List<String> knownClasses;
+	private static List<String> known;
 	
 	private StringBuilder sb = new StringBuilder();
 
@@ -58,6 +62,7 @@ public class Main extends SignatureVisitor implements Runnable {
 	private static boolean fields;
 
 	Object target;
+	static String reference;
 	private JCheckBox externalCheck;
 	private JCheckBox globalCheck;
 	private JCheckBox methodsCheck;
@@ -90,17 +95,26 @@ public class Main extends SignatureVisitor implements Runnable {
 	public void run() {
 		running = true;
 		clear();
+		known = null;
+
+		if (reference != null && reference.trim().length() != 0) {
+			process(reference, true);
+//			known = found; // TODO
+		}
+		reference = null;
+		if (global) found = new ArrayList<String>();
+		
 		Object target = this.target;
 		if (target instanceof String) {
-			process((String) target);
+			process((String) target, false);
 		} else if (target instanceof List) {
 			for (Object e: (List) target) {
 				if (e == null) continue;
-				process(e.toString());
+				process(e.toString(), false);
 			}
 		} else if (target instanceof String[]) {
 			for (String s: (String[]) target) {
-				process(s);
+				process(s, false);
 			}
 		}
 		if (global) {
@@ -110,10 +124,11 @@ public class Main extends SignatureVisitor implements Runnable {
 			}
 			log("", true);
 		}
+		log("Done", true);
 		running = false;
 	}
 	
-	private void process(String t) {
+	private void process(String t, boolean ref) {
 		if ("-external".equalsIgnoreCase(t)) {
 			externalOnly = true;
 			return;
@@ -133,17 +148,17 @@ public class Main extends SignatureVisitor implements Runnable {
 		File f = new File(t);
 		if (f.isDirectory()) {
 			for (File s: f.listFiles()) {
-				process(s);
+				process(s, ref);
 			}
 		} else {
-			process(f);
+			process(f, ref);
 		}
 	}
 	
-	private void process(File f) {
+	private void process(File f, boolean ref) {
 		if (f.isDirectory()) {
 			for (File s: f.listFiles()) {
-				process(s);
+				process(s, ref);
 			}
 			return;
 		}
@@ -154,8 +169,13 @@ public class Main extends SignatureVisitor implements Runnable {
 		if (!global) log("File: " + f, true);
 		
 		try {
-			if (!global) found = new ArrayList<String>();
-			jarClasses = new ArrayList<String>();
+			if (ref) {
+				found = new ArrayList<String>();
+				knownClasses = new ArrayList<String>();
+			} else {
+				if (!global) found = new ArrayList<String>();
+				jarClasses = new ArrayList<String>();
+			}
 			
 			try (ZipFile zipFile = new ZipFile(f)) {
 				Enumeration<? extends ZipEntry> e = zipFile.entries();
@@ -163,8 +183,11 @@ public class Main extends SignatureVisitor implements Runnable {
 					ZipEntry entry = e.nextElement();
 					String s = entry.getName();
 					if (!s.endsWith(".class")) continue;
-					
-					jarClasses.add(s.substring(0, s.length() - 6));
+					if (ref) {
+						knownClasses.add(s.substring(0, s.length() - 6));
+					} else {
+						jarClasses.add(s.substring(0, s.length() - 6));
+					}
 				}
 				
 				e = zipFile.entries();
@@ -178,13 +201,18 @@ public class Main extends SignatureVisitor implements Runnable {
 						log("Invalid class name: " + s, true);
 						continue;
 					}
-					ClassReader classReader = new ClassReader(zipFile.getInputStream(entry));
-					ClassWriter classWriter = new ClassWriter(0);
-					classReader.accept(new ClassAdapter(classWriter, s), ClassReader.SKIP_DEBUG);
+					try {
+						ClassReader classReader = new ClassReader(zipFile.getInputStream(entry));
+						ClassWriter classWriter = new ClassWriter(0);
+						classReader.accept(new ClassAdapter(classWriter, s), ClassReader.SKIP_DEBUG);
+					} catch (Exception ex) {
+						ex.printStackTrace();
+						log("Error: " + ex.toString() + ", File: " + f + ":" + s + ".class", true);
+					}
 				}
 			}
 			
-			if (!global) {
+			if (!global && !ref) {
 				Collections.sort(found);
 				for (String s: found) {
 					log(s, false);
@@ -192,13 +220,13 @@ public class Main extends SignatureVisitor implements Runnable {
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			if (global) {
+			if (global || ref) {
 				log("Error: " + e.toString() + ", File: " + f, true);
 			} else {
 				log("Error: " + e.toString(), false);
 			}
 		}
-		if (!global) log("", true);
+		if (!global && !ref) log("", true);
 	}
 	
 	void log(String s, boolean b) {
@@ -212,12 +240,11 @@ public class Main extends SignatureVisitor implements Runnable {
 		if (textArea == null) return;
 		sb.setLength(0);
 		textArea.setText("");
-		if (global) found = new ArrayList<String>();
 	}
 
 	void initializeUI() {
 		frame = new JFrame();
-		frame.setTitle("Imports view v2");
+		frame.setTitle("Imports view v2.5");
 		frame.setBounds(100, 100, 350, 536);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.getContentPane().setLayout(new GridLayout(0, 1, 0, 0));
@@ -229,20 +256,6 @@ public class Main extends SignatureVisitor implements Runnable {
 		JPanel panel = new JPanel();
 		panel_1.add(panel, BorderLayout.NORTH);
 		panel.setLayout(new BorderLayout(0, 0));
-		
-		JButton openBtn = new JButton("Open");
-		openBtn.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				if (running) return;
-				target = textField.getText();
-				new Thread(Main.this).start();
-			}
-		});
-		panel.add(openBtn, BorderLayout.EAST);
-		
-		textField = new JTextField();
-		panel.add(textField, BorderLayout.CENTER);
-		textField.setColumns(10);
 		
 		JPanel panel_2 = new JPanel();
 		FlowLayout flowLayout = (FlowLayout) panel_2.getLayout();
@@ -286,8 +299,38 @@ public class Main extends SignatureVisitor implements Runnable {
 			}
 		});
 		
+		JPanel panel_3 = new JPanel();
+		panel.add(panel_3, BorderLayout.NORTH);
+		panel_3.setLayout(new BorderLayout(0, 0));
+		
 		JLabel label = new JLabel("Jar or folder: ");
-		panel.add(label, BorderLayout.WEST);
+		panel_3.add(label, BorderLayout.WEST);
+		
+		textField = new JTextField();
+		panel_3.add(textField, BorderLayout.CENTER);
+		textField.setColumns(10);
+		
+		JButton openBtn = new JButton("Open");
+		panel_3.add(openBtn, BorderLayout.EAST);
+		
+		JPanel panel_4 = new JPanel();
+		panel.add(panel_4, BorderLayout.CENTER);
+		panel_4.setLayout(new BorderLayout(0, 0));
+		
+		JLabel lblNewLabel = new JLabel("Reference jar: ");
+		panel_4.add(lblNewLabel, BorderLayout.WEST);
+		
+		refField = new JTextField();
+		panel_4.add(refField, BorderLayout.CENTER);
+		refField.setColumns(10);
+		openBtn.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				if (running) return;
+				target = textField.getText();
+				reference = refField.getText();
+				new Thread(Main.this).start();
+			}
+		});
 		
 		JScrollPane scrollPane = new JScrollPane();
 		panel_1.add(scrollPane, BorderLayout.CENTER);
@@ -384,12 +427,14 @@ public class Main extends SignatureVisitor implements Runnable {
 			s = s.substring(1);
 		}
 		if (found.contains(s)) return;
-		if (externalOnly && jarClasses.contains(s)) return;
+		if (externalOnly && jarClasses != null && jarClasses.contains(s)) return;
+		if (knownClasses != null && knownClasses.contains(s)) return;
+		if (known != null && known.contains(s)) return;
 		found.add(s);
 	}
 
 	public static void addMethod(int op, String cls, String name, String sign) {
-		if (externalOnly && jarClasses.contains(cls)) return;
+		if (externalOnly && jarClasses != null && jarClasses.contains(cls)) return;
 		addName(cls);
 		addDesc(sign);
 		
@@ -408,11 +453,12 @@ public class Main extends SignatureVisitor implements Runnable {
 		}
 		s = cls+" "+name+sign + " " + s;
 		if (found.contains(s)) return;
+		if (known != null && known.contains(s)) return;
 		found.add(s);
 	}
 
 	public static void addField(int op, String cls, String name, String sign) {
-		if (externalOnly && jarClasses.contains(cls)) return;
+		if (externalOnly && jarClasses != null && jarClasses.contains(cls)) return;
 		addName(cls);
 		addDesc(sign);
 		
@@ -431,6 +477,7 @@ public class Main extends SignatureVisitor implements Runnable {
 		}
 		s = cls+" "+sign + " " + name + " " + s;
 		if (found.contains(s)) return;
+		if (known != null && known.contains(s)) return;
 		found.add(s);
 	}
 
