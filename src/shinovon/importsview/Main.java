@@ -102,7 +102,6 @@ public class Main extends SignatureVisitor implements Runnable {
 //			known = found; // TODO
 		}
 		reference = null;
-		if (global) found = new ArrayList<String>();
 		
 		Object target = this.target;
 		if (target instanceof String) {
@@ -134,6 +133,7 @@ public class Main extends SignatureVisitor implements Runnable {
 			return;
 		}
 		if ("-global".equalsIgnoreCase(t)) {
+			found = new ArrayList<String>();
 			global = true;
 			return;
 		}
@@ -240,11 +240,14 @@ public class Main extends SignatureVisitor implements Runnable {
 		if (textArea == null) return;
 		sb.setLength(0);
 		textArea.setText("");
+		if (global) {
+			found = new ArrayList<String>();
+		}
 	}
 
 	void initializeUI() {
 		frame = new JFrame();
-		frame.setTitle("Imports view v2.5");
+		frame.setTitle("Imports view v2.6");
 		frame.setBounds(100, 100, 350, 536);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.getContentPane().setLayout(new GridLayout(0, 1, 0, 0));
